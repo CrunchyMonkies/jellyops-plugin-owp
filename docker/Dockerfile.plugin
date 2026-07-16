@@ -1,0 +1,24 @@
+# Plugin-only OCI image: the image-volume payload consumed by JellyOps.
+#
+# The filesystem ROOT *is* the contents of the Jellyfin plugin directory —
+# meta.json + OpenWatchParty.Plugin.dll + the third-party JWT assemblies
+# (Microsoft.IdentityModel.*, System.IdentityModel.Tokens.Jwt) + firstrun.sh.
+# (Newtonsoft.Json is NOT shipped — the plugin binds the host's copy so its JObject
+# type identity matches the File Transformation plugin's; see the csproj.) The payload
+# is produced by docker/build-push.sh (bundle client JS, dotnet publish, strip host
+# assemblies) into `plugin/` — nothing is compiled here.
+#
+# JellyOps mounts the image read-only and, with `injection: imageVolumeCopy`, copies the
+# root into `/config/plugins/OpenWatchParty_<version>/` via a staging init container so
+# Jellyfin can write meta.json status at runtime.
+#
+# No base image is needed — image volumes mount the layer filesystem directly.
+FROM scratch
+
+# Files at root; the JellyfinPlugin CR sets no subPath, so the operator copies
+# `<image>/.` -> `<plugins>/OpenWatchParty_<version>/`. The whole payload is the plugin dir.
+COPY plugin/ /
+
+LABEL io.jellyops.plugin.guid="0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d" \
+      io.jellyops.plugin.name="OpenWatchParty" \
+      io.jellyops.plugin.version="1.0.0.0"

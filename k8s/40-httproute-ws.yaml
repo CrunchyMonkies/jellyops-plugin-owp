@@ -1,0 +1,45 @@
+# WebSocket carve-out for the OpenWatchParty session server.
+#
+# The JellyOps operator owns the catch-all HTTPRoute for jellyfin.bne1.ouchi.com.au (path "/" ->
+# the Jellyfin server). This route adds a MORE-SPECIFIC PathPrefix "/owp" that Gateway API ranks
+# ahead of the operator's "/" match on the same hostname + parentRef, so /owp/* is peeled off to
+# the session server before it can reach Jellyfin.
+#
+# The upstream server serves /ws (WebSocket) and /health at the ROOT, so we strip the /owp prefix:
+#   wss://jellyfin.bne1.ouchi.com.au/owp/ws  ->  owp-session-server:3000  /ws
+#   https://jellyfin.bne1.ouchi.com.au/owp/health -> owp-session-server:3000 /health
+#
+# Envoy Gateway forwards WebSocket upgrades transparently (no extra config needed). The backing
+# Service (owp-session-server) is created by the JellyfinPlugin CR's spec.services block.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: owp-ws
+  namespace: jellyfin
+  labels:
+    jellyfin.jellyops.io/instance: home-media
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: shared
+      namespace: envoy-gateway-system
+      sectionName: https-ouchi
+  hostnames:
+    - jellyfin.bne1.ouchi.com.au
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /owp
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: owp-session-server
+          port: 3000

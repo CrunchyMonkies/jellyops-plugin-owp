@@ -1,0 +1,102 @@
+# OpenWatchParty plugin, delivered by JellyOps to the home-media instance — COMPANION mode:
+# this CR also runs the upstream Rust session server as a companion workload.
+#
+# - pluginImage: the plugin-only image-volume payload (meta.json + OpenWatchParty.Plugin.dll +
+#   IdentityModel/JWT DLLs + firstrun.sh at root). injection: imageVolumeCopy — staged into a
+#   writable /config/plugins dir so Jellyfin can write meta.json status at runtime.
+# - install: the standard first-run hook baked into the plugin image (firstrun.sh) seeds
+#   OpenWatchParty.Plugin.xml from env/Secret — the JWT secret (SHARED with the session server),
+#   the public wss:// session URL, audience/issuer/TTLs.
+# - services: a ClusterIP Service exposing the session server's :3000 (REST /health + WS /ws).
+# - workloads: the upstream owp-session-server (Rust warp WebSocket sync server), pinned by digest.
+#
+# REQUIRES:
+#   * the File Transformation plugin (CR file-transformation) present & Loaded — OWP registers its
+#     index.html injection with it at startup (a scheduled StartupTrigger task). Apply FT first.
+#   * a web-serving (non-split) Jellyfin instance so the FT-injected <script> reaches the client.
+#   * the owp-creds Secret (jwt-secret) — see 35-owp-credentials.yaml — shared by BOTH the plugin
+#     (mints tokens) and the session server (validates them).
+#   * the /owp WebSocket HTTPRoute — see 40-httproute-ws.yaml.
+#
+# Pin spec.pluginImage.reference to the @sha256 digest printed by docker/build-push.sh.
+apiVersion: jellyfin.jellyops.io/v1alpha1
+kind: JellyfinPlugin
+metadata:
+  name: owp
+  namespace: jellyfin
+  labels:
+    jellyfin.jellyops.io/instance: home-media
+spec:
+  jellyfinRef:
+    name: jellyfin
+  pluginImage:
+    reference: ghcr.io/crunchymonkies/jellyops-plugin-owp/plugin@sha256:REPLACE_ME_WITH_DIGEST
+    pullPolicy: IfNotPresent
+  meta:
+    guid: 0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d
+    name: "OpenWatchParty"
+    version: "1.0.0.0"
+    targetAbi: "12.0.0.0"
+  injection: imageVolumeCopy
+  install:
+    # No inline script: jellyops auto-runs firstrun.sh (once per instance) from the plugin image
+    # to seed OpenWatchParty.Plugin.xml. This block supplies the helper image + env the hook reads.
+    image:
+      reference: alpine:3
+    env:
+      # The public WebSocket URL the browser dials (served by the /owp HTTPRoute -> :3000/ws).
+      - name: OWP_SESSION_SERVER_URL
+        value: wss://jellyfin.bne1.ouchi.com.au/owp/ws
+      - name: OWP_JWT_AUDIENCE
+        value: OpenWatchParty
+      - name: OWP_JWT_ISSUER
+        value: Jellyfin
+      - name: OWP_TOKEN_TTL_SECONDS
+        value: "3600"
+      - name: OWP_INVITE_TTL_SECONDS
+        value: "3600"
+      # SHARED secret — the plugin signs tokens the session server verifies. Same key as the
+      # session-server JWT_SECRET below.
+      - name: OWP_JWT_SECRET
+        valueFrom: { secretKeyRef: { name: owp-creds, key: jwt-secret } }
+    failurePolicy: Ignore # Jellyfin still boots if the seed errors (fail-open)
+    timeoutSeconds: 120
+  services:
+    - name: owp-session-server
+      selector: workload:owp-session-server
+      ports:
+        - name: http
+          port: 3000
+          targetPort: 3000
+  workloads:
+    - name: owp-session-server
+      image:
+        # Upstream Rust session server (multi-arch; the kubelet selects amd64). Pinned by the
+        # manifest-list digest resolved 2026-07-16.
+        reference: ghcr.io/mhbxyz/owp-session-server@sha256:2f81f72efa51795b21328e2c4898dc225172c12264503faa534f5390a84adaf4
+        pullPolicy: IfNotPresent
+      replicas: 1 # in-memory room state — single instance (do not scale without shared state)
+      ports:
+        - name: http
+          containerPort: 3000
+      env:
+        - { name: HOST, value: "0.0.0.0" }
+        - { name: PORT, value: "3000" }
+        # Browser Origin when the web client opens the WebSocket from the Jellyfin page.
+        - { name: ALLOWED_ORIGINS, value: "https://jellyfin.bne1.ouchi.com.au" }
+        - { name: JWT_AUDIENCE, value: "OpenWatchParty" }
+        - { name: JWT_ISSUER, value: "Jellyfin" }
+        - name: JWT_SECRET
+          valueFrom: { secretKeyRef: { name: owp-creds, key: jwt-secret } }
+      resources:
+        requests:
+          cpu: "50m"
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 3000
+        initialDelaySeconds: 3
+        periodSeconds: 10

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenWatchParty Configuration</title>
+</head>
+<body>
+    <div data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form class="openwatchpartyConfigurationForm">
+                    <!-- Authentication Settings -->
+                    <div class="verticalSection">
+                        <h2 class="sectionTitle">Authentication</h2>
+                        <div class="inputContainer">
+                            <div style="display:flex;align-items:flex-end;gap:.5em">
+                                <div style="flex:1">
+                                    <input is="emby-input" type="password" id="JwtSecret" label="JWT Secret" autocomplete="new-password" />
+                                </div>
+                                <button is="emby-button" type="button" id="toggleJwtSecret" class="raised" style="margin-bottom:.3em;min-width:auto;padding:.4em .8em" title="Show/Hide">
+                                    <span class="material-icons" style="font-size:1.3em">visibility</span>
+                                </button>
+                            </div>
+                            <div class="fieldDescription">Secret used to sign and verify session tokens (min 32 characters). Clear to disable authentication.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" type="text" id="JwtAudience" label="JWT Audience" />
+                            <div class="fieldDescription">Audience claim for JWT tokens. Must match the session server configuration.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" type="text" id="JwtIssuer" label="JWT Issuer" />
+                            <div class="fieldDescription">Issuer claim for JWT tokens. Must match the session server configuration.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" type="number" id="TokenTtlSeconds" label="Token TTL (seconds)" min="60" max="86400" step="60" />
+                            <div class="fieldDescription">How long tokens remain valid (60-86400 seconds). Default: 3600 (1 hour).</div>
+                        </div>
+                    </div>
+
+                    <!-- Server Settings -->
+                    <div class="verticalSection">
+                        <h2 class="sectionTitle">Session Server</h2>
+                        <div class="inputContainer">
+                            <input is="emby-input" type="text" id="SessionServerUrl" label="Session Server URL" placeholder="Auto-detect (same host, port 3000)" />
+                            <div class="fieldDescription">WebSocket server URL (e.g., wss://party.example.com/ws). Leave empty for auto-detection.</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var OpenWatchPartyConfigurationPage = {
+                // Fallback GUID (should match Plugin.PluginGuid constant)
+                pluginId: "0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d",
+
+                // Fetch plugin ID from API (preferred) to avoid GUID desync
+                init: function() {
+                    var self = this;
+                    return fetch(ApiClient.getUrl('OpenWatchParty/Info'))
+                        .then(function(response) { return response.json(); })
+                        .then(function(info) {
+                            self.pluginId = info.id;
+                        })
+                        .catch(function() {
+                            // Fallback to hardcoded GUID if API fails
+                            console.warn('OpenWatchParty: Could not fetch plugin info, using fallback GUID');
+                        });
+                }
+            };
+
+            $('#toggleJwtSecret').on('click', function () {
+                var input = document.getElementById('JwtSecret');
+                var icon = this.querySelector('.material-icons');
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.textContent = 'visibility_off';
+                } else {
+                    input.type = 'password';
+                    icon.textContent = 'visibility';
+                }
+            });
+
+            $('.pluginConfigurationPage').on('pageshow', function () {
+                var page = this;
+                Dashboard.showLoadingMsg();
+
+                // Initialize plugin ID then load configuration
+                OpenWatchPartyConfigurationPage.init().then(function() {
+                    return ApiClient.getPluginConfiguration(OpenWatchPartyConfigurationPage.pluginId);
+                }).then(function (config) {
+                    // Authentication settings
+                    $('#JwtSecret', page).val(config.JwtSecret || '');
+                    $('#JwtAudience', page).val(config.JwtAudience || 'OpenWatchParty');
+                    $('#JwtIssuer', page).val(config.JwtIssuer || 'Jellyfin');
+                    $('#TokenTtlSeconds', page).val(config.TokenTtlSeconds || 3600);
+
+                    // Server settings
+                    $('#SessionServerUrl', page).val(config.SessionServerUrl || '');
+
+                    Dashboard.hideLoadingMsg();
+                }).catch(function (err) {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('Failed to load configuration: ' + (err.message || 'Unknown error'));
+                });
+            });
+
+            $('.openwatchpartyConfigurationForm').on('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                var page = $(this).parents('.pluginConfigurationPage')[0];
+
+                ApiClient.getPluginConfiguration(OpenWatchPartyConfigurationPage.pluginId).then(function (config) {
+                    // Authentication settings
+                    config.JwtSecret = $('#JwtSecret', page).val();
+                    config.JwtAudience = $('#JwtAudience', page).val();
+                    config.JwtIssuer = $('#JwtIssuer', page).val();
+                    config.TokenTtlSeconds = parseInt($('#TokenTtlSeconds', page).val(), 10) || 3600;
+
+                    // Server settings
+                    config.SessionServerUrl = $('#SessionServerUrl', page).val();
+
+                    return ApiClient.updatePluginConfiguration(OpenWatchPartyConfigurationPage.pluginId, config);
+                }).then(function () {
+                    Dashboard.processPluginConfigurationUpdateResult();
+                }).catch(function (err) {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('Failed to save configuration: ' + (err.message || 'Unknown error'));
+                });
+            });
+        </script>
+    </div>
+</body>
+</html>
