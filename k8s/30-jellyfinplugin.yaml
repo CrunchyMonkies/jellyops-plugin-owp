@@ -30,7 +30,7 @@ spec:
   jellyfinRef:
     name: jellyfin
   pluginImage:
-    reference: harbor.bne1.ouchi.com.au/applications/jellyops-owp-plugin@sha256:44028267019ffd42fa3f3f72bf42a8bd02eeba2b3f45328a05487f0d7ef514de
+    reference: ghcr.io/crunchymonkies/jellyops-plugin-owp/plugin@sha256:637833708e27148ab3c437bb81477a56f6cbcde3881ff5d6a4cdaf31e6b63438
     pullPolicy: IfNotPresent
   meta:
     guid: 0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d
