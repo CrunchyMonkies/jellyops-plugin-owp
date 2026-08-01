@@ -21,4 +21,6 @@ COPY plugin/ /
 
 LABEL io.jellyops.plugin.guid="0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d" \
       io.jellyops.plugin.name="OpenWatchParty" \
-      io.jellyops.plugin.version="1.0.0.0"
+      io.jellyops.plugin.version="1.0.1.0" \
+      io.jellyops.plugin.targetAbi="12.0.0.0" \
+      io.jellyops.plugin.framework="net10.0"

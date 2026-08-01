@@ -10,9 +10,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <NoWarn>CS1591</NoWarn>
     <!-- Plugins load into their own AssemblyLoadContext: third-party package DLLs the host does not
@@ -42,8 +42,8 @@
   </ItemGroup>
 
   <!--
-    Compile against the EXACT Jellyfin v12 rc2 assemblies the running server loads
-    (v12.0.0-rc2-jc-0.2.0), but do NOT ship copies (Private=false + ExcludeAssets=runtime).
+    Compile against the EXACT Jellyfin v12 rc3 assemblies the running server loads
+    (v12.0.0-rc3-jc-0.2.1), but do NOT ship copies (Private=false + ExcludeAssets=runtime).
     Shipping duplicate MediaBrowser.* DLLs causes type-identity conflicts in the plugin ALC.
   -->
   <ItemGroup>

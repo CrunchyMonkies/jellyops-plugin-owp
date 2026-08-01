@@ -5,7 +5,7 @@ Jellyfin — ported to **Jellyfin v12 (.NET 10)** and packaged as a JellyOps `Je
 image-volume with a companion WebSocket session server.
 
 Upstream targets net9 / Jellyfin 10.11. This repo is the v12 port for the CrunchyMonkies
-JellyOps cluster, built against the Jellyfin fork at tag **`v12.0.0-rc2-jc-0.2.0`** (ABI
+JellyOps cluster, built against the Jellyfin fork at tag **`v12.0.0-rc3-jc-0.2.1`** (ABI
 `12.0.0.0`). Upstream is MIT; this port keeps that license (`LICENSE`).
 
 ## How it works
@@ -39,7 +39,7 @@ CI fails if the committed bundle is stale.
 ## Build & package
 
 ```sh
-# Requires a sibling jellyfin-src checkout at tag v12.0.0-rc2-jc-0.2.0.
+# Requires a sibling jellyfin-src checkout at tag v12.0.0-rc3-jc-0.2.1.
 docker/build-push.sh [TAG]          # bundle -> publish -> strip -> FROM-scratch image -> GHCR
 PUSH=false docker/build-push.sh     # build locally only
 ```

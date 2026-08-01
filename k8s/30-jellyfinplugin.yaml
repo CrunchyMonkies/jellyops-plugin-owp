@@ -35,7 +35,7 @@ spec:
   meta:
     guid: 0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d
     name: "OpenWatchParty"
-    version: "1.0.0.0"
+    version: "1.0.1.0"
     targetAbi: "12.0.0.0"
   injection: imageVolumeCopy
   install:
