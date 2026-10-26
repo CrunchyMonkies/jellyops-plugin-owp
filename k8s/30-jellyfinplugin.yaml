@@ -1,22 +1,28 @@
 # OpenWatchParty plugin, delivered by JellyOps to the home-media instance — COMPANION mode:
 # this CR also runs the upstream Rust session server as a companion workload.
 #
-# - pluginImage: the plugin-only image-volume payload (meta.json + OpenWatchParty.Plugin.dll +
-#   IdentityModel/JWT DLLs + firstrun.sh at root). injection: imageVolumeCopy — staged into a
-#   writable /config/plugins dir so Jellyfin can write meta.json status at runtime.
-# - install: the standard first-run hook baked into the plugin image (firstrun.sh) seeds
-#   OpenWatchParty.Plugin.xml from env/Secret — the JWT secret (SHARED with the session server),
-#   the public wss:// session URL, audience/issuer/TTLs.
+# - pluginImage: the plugin-only image-volume payload — the unmodified upstream
+#   mhbxyz/OpenWatchParty v0.8.0 release zip (OpenWatchPartyPlugin.dll + IdentityModel/JWT DLLs +
+#   meta.json; net10.0, targetAbi 12.0.0.0) plus firstrun.sh/bootstrap.sh at root.
+#   injection: imageVolumeCopy — staged into a writable /config/plugins dir so Jellyfin can write
+#   meta.json status at runtime.
+# - install: the hooks baked into the plugin image. firstrun.sh (once) seeds
+#   OpenWatchPartyPlugin.xml from env/Secret — the JWT secret (SHARED with the session server),
+#   the public wss:// session URL, audience/issuer/TTLs. bootstrap.sh (every start) removes
+#   superseded OpenWatchParty_* dirs (e.g. the old 1.0.1.0 source-port build, which would
+#   otherwise outrank 0.8.0.0).
+# - Requires a Jellyfin v12 server >= ABI 12.0.0.0 (deployed: v12.3-jc-0.2.4).
 # - services: a ClusterIP Service exposing the session server's :3000 (REST /health + WS /ws).
-# - workloads: the upstream owp-session-server (Rust warp WebSocket sync server), pinned by digest.
+# - workloads: the upstream owp-session-server 0.8.0 (Rust WebSocket sync server, WebSocket
+#   protocol v1 — matches the v0.8.0 plugin/client), pinned by digest.
 #
 # REQUIRES:
-#   * the File Transformation plugin (CR file-transformation) present & Loaded — OWP registers its
-#     index.html injection with it at startup (a scheduled StartupTrigger task). Apply FT first.
-#   * a web-serving (non-split) Jellyfin instance so the FT-injected <script> reaches the client.
+#   * a web-serving (non-split) Jellyfin instance: the plugin injects its client loader into the
+#     server's own index.html response (native middleware). The File Transformation plugin is no
+#     longer required (upstream treats it as an optional fallback).
 #   * the owp-creds Secret (jwt-secret) — see 35-owp-credentials.yaml — shared by BOTH the plugin
-#     (mints tokens) and the session server (validates them).
-#   * the /owp WebSocket HTTPRoute — see 40-httproute-ws.yaml.
+#     (mints tokens) and the session server (validates them). Must be Base64 of >= 32 random bytes.
+#   * the /owp HTTPRoute — see 40-httproute-ws.yaml (serves /owp/ws and /owp/invite).
 #
 # Pin spec.pluginImage.reference to the @sha256 digest printed by docker/build-push.sh.
 apiVersion: jellyfin.jellyops.io/v1alpha1
@@ -35,7 +41,7 @@ spec:
   meta:
     guid: 0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d
     name: "OpenWatchParty"
-    version: "1.0.1.0"
+    version: "0.8.0.0"
     targetAbi: "12.0.0.0"
   injection: imageVolumeCopy
   install:
@@ -71,9 +77,9 @@ spec:
   workloads:
     - name: owp-session-server
       image:
-        # Upstream Rust session server (multi-arch; the kubelet selects amd64). Pinned by the
-        # manifest-list digest resolved 2026-07-16.
-        reference: ghcr.io/mhbxyz/owp-session-server@sha256:2f81f72efa51795b21328e2c4898dc225172c12264503faa534f5390a84adaf4
+        # Upstream Rust session server 0.8.0 (multi-arch index; the kubelet selects amd64). Pinned
+        # by the OCI index digest — matches the v0.8.0 release provenance and upstream's docs.
+        reference: ghcr.io/mhbxyz/owp-session-server:0.8.0@sha256:e0634bf2fafd59bcb612c0ec93cb7e54190eb5b00c8c37ee0680b9e92ee29f68
         pullPolicy: IfNotPresent
       replicas: 1 # in-memory room state — single instance (do not scale without shared state)
       ports:
