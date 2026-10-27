@@ -36,7 +36,7 @@ spec:
   jellyfinRef:
     name: jellyfin
   pluginImage:
-    reference: ghcr.io/crunchymonkies/jellyops-plugin-owp/plugin@sha256:39f3fd317c27df9162e13850c830df7ae5537bea16977f0fdd2f1321a768fc0d
+    reference: ghcr.io/crunchymonkies/jellyops-plugin-owp/plugin@sha256:7eb501b303cbb9de95c2cf77ab5e59f723bce1f51d02b8fed40d51f6b941c3dc
     pullPolicy: IfNotPresent
   meta:
     guid: 0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d
@@ -46,7 +46,7 @@ spec:
   injection: imageVolumeCopy
   install:
     # No inline script: jellyops auto-runs firstrun.sh (once per instance) from the plugin image
-    # to seed OpenWatchParty.Plugin.xml. This block supplies the helper image + env the hook reads.
+    # to seed OpenWatchPartyPlugin.xml. This block supplies the helper image + env the hook reads.
     image:
       reference: alpine:3
     env:
