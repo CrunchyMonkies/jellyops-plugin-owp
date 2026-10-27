@@ -1,16 +1,10 @@
 name: Build & Publish Plugin Image
 
-# Bundles the OpenWatchParty client JS, compiles the plugin (src/Plugin) against the
-# Jellyfin v12 (.NET 10) assemblies, strips host assemblies, and packages the payload into
-# a FROM-scratch image-volume payload pushed to GHCR (provenance disabled so the kubelet
-# mounts it cleanly as an image volume).
-#
-# The plugin compiles against the Jellyfin fork's assemblies, so this workflow checks out
-# CrunchyMonkies/jellyfin as a sibling (dir `jellyfin-src`, matching the csproj's
-# ../../../jellyfin-src relative ProjectReferences) at the tag the deployed server runs.
-#
-# REQUIRED repo secret: JELLYFIN_SRC_TOKEN — a PAT with `contents:read` on the PRIVATE
-# CrunchyMonkies/jellyfin repo (the default GITHUB_TOKEN cannot read another private repo).
+# Packages the upstream mhbxyz/OpenWatchParty release artifact (OpenWatchParty-v<ver>.zip:
+# net10.0, Jellyfin.Controller 12.0.0, targetAbi 12.0.0.0) plus the jellyops hooks into a
+# FROM-scratch image-volume payload and pushes it to GHCR. Provenance is disabled so the
+# kubelet mounts it cleanly as an image volume. Nothing is compiled; no secrets beyond
+# GITHUB_TOKEN are needed (the upstream repo is public).
 
 on:
   push:
@@ -18,10 +12,14 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      jellyfin_src_ref:
-        description: "CrunchyMonkies/jellyfin ref (branch/tag) to build against"
+      owp_tag:
+        description: "mhbxyz/OpenWatchParty release tag to package"
         required: true
-        default: "v12.0.0-rc3-jc-0.2.1"
+        default: "v0.8.0"
+      owp_sha256:
+        description: "SHA-256 of OpenWatchParty-<tag>.zip (required when changing owp_tag)"
+        required: true
+        default: "f86145bf14f7414bda2ab2925565d00198a46d7bf346ccd0186136002dd70cdd"
 
 permissions:
   contents: read
@@ -29,59 +27,42 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}/plugin
-  JELLYFIN_SRC_REPO: CrunchyMonkies/jellyfin
-  # Build against the exact tag the deployed server image (…/jellyfin:v12.0.0-rc3-jc-0.2.1)
-  # was built from, so the plugin's compiled ABI matches the running host.
-  JELLYFIN_SRC_REF: ${{ github.event.inputs.jellyfin_src_ref || 'v12.0.0-rc3-jc-0.2.1' }}
+  OWP_REPO: mhbxyz/OpenWatchParty
+  OWP_TAG: ${{ github.event.inputs.owp_tag || 'v0.8.0' }}
+  OWP_SHA256: ${{ github.event.inputs.owp_sha256 || 'f86145bf14f7414bda2ab2925565d00198a46d7bf346ccd0186136002dd70cdd' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout plugin repo
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: plugin-repo
 
-      - name: Checkout jellyfin-src (sibling)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.JELLYFIN_SRC_REPO }}
-          ref: ${{ env.JELLYFIN_SRC_REF }}
-          token: ${{ secrets.JELLYFIN_SRC_TOKEN || secrets.GITHUB_TOKEN }}
-          path: jellyfin-src
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Bundle client + publish plugin payload
-        working-directory: plugin-repo
+      - name: Download, verify and stage the upstream payload
         env:
-          JELLYFIN_SRC: ${{ github.workspace }}/jellyfin-src
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Regenerate the embedded client bundle from the vendored modules, then verify it is
-          # in sync with what is committed (fail if a module changed without re-bundling).
-          bash scripts/bundle-client.sh
-          if ! git diff --quiet -- src/Plugin/Web/plugin.js; then
-            echo "src/Plugin/Web/plugin.js is stale — run scripts/bundle-client.sh and commit." >&2
-            git --no-pager diff --stat -- src/Plugin/Web/plugin.js >&2
-            exit 1
-          fi
-          dotnet publish src/Plugin/OpenWatchParty.Plugin.csproj -c Release -o publish -v minimal
+          asset="OpenWatchParty-${OWP_TAG}.zip"
+          gh release download "${OWP_TAG}" --repo "${OWP_REPO}" --pattern "${asset}" --dir . --clobber
+          echo "${OWP_SHA256}  ${asset}" | sha256sum -c -
           mkdir -p plugin
-          cp publish/*.dll plugin/
-          cp publish/meta.json plugin/meta.json
-          cp scripts/firstrun.sh plugin/firstrun.sh
-          chmod +x plugin/firstrun.sh
-          # Fail if host assemblies OR Newtonsoft leaked (both must resolve from the host ALC).
+          unzip -o -q "${asset}" -d plugin
+          cp scripts/firstrun.sh scripts/bootstrap.sh plugin/
+          chmod +x plugin/firstrun.sh plugin/bootstrap.sh
+          for f in OpenWatchPartyPlugin.dll meta.json firstrun.sh bootstrap.sh; do test -f "plugin/$f"; done
+          # Host assemblies must resolve from the host ALC; fail if a release starts shipping them.
           leaked="$(find plugin -maxdepth 1 -type f \( -name 'Emby.*' -o -name 'MediaBrowser.*' \
             -o -name 'Newtonsoft.*' -o \( -name 'Jellyfin.*' -a ! -name 'OpenWatchParty*' \) \))"
           if [ -n "$leaked" ]; then
             echo "forbidden assemblies leaked into payload:" >&2; echo "$leaked" >&2; exit 1
           fi
-          echo "Payload:"; ls -1 plugin
+          # The Dockerfile labels must match the payload's meta.json.
+          version="$(jq -r .version plugin/meta.json)"; abi="$(jq -r .targetAbi plugin/meta.json)"
+          grep -q "io.jellyops.plugin.version=\"${version}\"" docker/Dockerfile.plugin \
+            || { echo "Dockerfile version label != meta.json version ${version}" >&2; exit 1; }
+          grep -q "io.jellyops.plugin.targetAbi=\"${abi}\"" docker/Dockerfile.plugin \
+            || { echo "Dockerfile targetAbi label != meta.json targetAbi ${abi}" >&2; exit 1; }
+          echo "Payload (version ${version}, targetAbi ${abi}):"; ls -1 plugin
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -103,10 +84,11 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: plugin-repo
-          file: plugin-repo/docker/Dockerfile.plugin
+          context: .
+          file: docker/Dockerfile.plugin
           push: true
           provenance: false
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -115,7 +97,7 @@ jobs:
           {
             echo "### OpenWatchParty plugin image published"
             echo ""
-            echo "- Built against: \`${JELLYFIN_SRC_REPO}\` @ \`${JELLYFIN_SRC_REF}\`"
+            echo "- Payload: \`${OWP_REPO}\` @ \`${OWP_TAG}\` (sha256 \`${OWP_SHA256}\`)"
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
             echo ""
             echo "Pin in \`k8s/30-jellyfinplugin.yaml\` (spec.pluginImage.reference):"

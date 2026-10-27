@@ -8,6 +8,8 @@
 # The upstream server serves /ws (WebSocket) and /health at the ROOT, so we strip the /owp prefix:
 #   wss://jellyfin.bne1.ouchi.com.au/owp/ws  ->  owp-session-server:3000  /ws
 #   https://jellyfin.bne1.ouchi.com.au/owp/health -> owp-session-server:3000 /health
+#   https://jellyfin.bne1.ouchi.com.au/owp/invite -> owp-session-server:3000 /invite
+#     (upstream >= 0.6 invite links: the client derives <SessionServerUrl minus /ws>/invite)
 #
 # Envoy Gateway forwards WebSocket upgrades transparently (no extra config needed). The backing
 # Service (owp-session-server) is created by the JellyfinPlugin CR's spec.services block.

@@ -1,26 +1,26 @@
 # Plugin-only OCI image: the image-volume payload consumed by JellyOps.
 #
-# The filesystem ROOT *is* the contents of the Jellyfin plugin directory —
-# meta.json + OpenWatchParty.Plugin.dll + the third-party JWT assemblies
-# (Microsoft.IdentityModel.*, System.IdentityModel.Tokens.Jwt) + firstrun.sh.
-# (Newtonsoft.Json is NOT shipped — the plugin binds the host's copy so its JObject
-# type identity matches the File Transformation plugin's; see the csproj.) The payload
-# is produced by docker/build-push.sh (bundle client JS, dotnet publish, strip host
-# assemblies) into `plugin/` — nothing is compiled here.
+# The filesystem ROOT *is* the contents of the Jellyfin plugin directory: the unmodified
+# upstream mhbxyz/OpenWatchParty release artifact (OpenWatchParty-v<version>.zip — meta.json,
+# OpenWatchPartyPlugin.dll/.pdb/.xml/.deps.json and the Microsoft.IdentityModel.* /
+# System.IdentityModel.Tokens.Jwt 6.35.0 assemblies) plus the jellyops hooks firstrun.sh and
+# bootstrap.sh. docker/build-push.sh (or CI) downloads, verifies and unzips it into `plugin/`;
+# nothing is compiled in this repo.
 #
-# JellyOps mounts the image read-only and, with `injection: imageVolumeCopy`, copies the
-# root into `/config/plugins/OpenWatchParty_<version>/` via a staging init container so
-# Jellyfin can write meta.json status at runtime.
-#
-# No base image is needed — image volumes mount the layer filesystem directly.
+# JellyOps mounts the image read-only and, with `injection: imageVolumeCopy`, copies the root
+# into `/config/plugins/OpenWatchParty_<version>/` via a staging init container so Jellyfin can
+# write meta.json status at runtime. No base image is needed.
 FROM scratch
 
-# Files at root; the JellyfinPlugin CR sets no subPath, so the operator copies
-# `<image>/.` -> `<plugins>/OpenWatchParty_<version>/`. The whole payload is the plugin dir.
 COPY plugin/ /
 
+# Self-description labels. version/targetAbi mirror the payload's meta.json; framework is the
+# TargetFramework baked into OpenWatchPartyPlugin.dll (.NETCoreApp v10.0). Keep in sync with
+# OWP_TAG in docker/build-push.sh and the workflow.
 LABEL io.jellyops.plugin.guid="0f2fd0fd-09ff-4f49-9f1c-4a8f421a4b7d" \
       io.jellyops.plugin.name="OpenWatchParty" \
-      io.jellyops.plugin.version="1.0.1.0" \
+      io.jellyops.plugin.version="0.8.0.0" \
       io.jellyops.plugin.targetAbi="12.0.0.0" \
-      io.jellyops.plugin.framework="net10.0"
+      io.jellyops.plugin.framework="net10.0" \
+      org.opencontainers.image.source="https://github.com/CrunchyMonkies/jellyops-plugin-owp" \
+      io.jellyops.plugin.upstream="https://github.com/mhbxyz/OpenWatchParty/releases/tag/v0.8.0"
